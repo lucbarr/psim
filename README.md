@@ -41,8 +41,9 @@ TODO
   - [x] Implement Round-Robin logic
   - [ ] Implement FCFS logic
   - [ ] Integrate both into Monitor
-  - [ ] Discover how IO is gonna work
+  - [x] Discover how IO is gonna work
   - [ ] Implement IO preemption stuff 
+  - [ ] Implement IO sync with CPU 
   - [ ] Improve Gantt printing
   - [ ] Make it pretty (refactor)
 
