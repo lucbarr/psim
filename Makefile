@@ -9,3 +9,6 @@ all: $(SRC)
 				@echo Done!!
 clean:
 				rm -f $(MAIN) *.o
+
+run : psim.out
+				./psim.out
