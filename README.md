@@ -15,7 +15,7 @@ to build, simply:
 
 to run:
 
-        $ ./psim.out
+        $ make run
 
 scheduling policy
 =================
