@@ -5,7 +5,7 @@
 #define IO_TIME  20
 #define TIME_THR 30
 
-#define DEBUG 0
+#define DEBUG 1
 
 using namespace std;
 
@@ -82,35 +82,21 @@ int main (){
   PQueue q2;
   PQueue ioq;
   vector<Interval> ans;
-  q1.next = &q1; // q1.next = &q2;
+  q1.next = &q2; // q1.next = &q2;
   q2.next = &q1;
   q1.ioq = &ioq;
   q2.ioq = &ioq;
   ioq.next = &q1;
 
   Process procs[] = {
-    { 10, 1 },
-    { 5, 0 }
+    { 30, 1 }
   };
   for ( auto& p : procs ) q1.push(&p);
 
-  int i = 0;
   while (1) {
     stepIO(ioq,ans);
     bool donerr = stepRR(q1,ans);  // can add to ioq
-    bool donefcfs = (donerr)?false:stepFCFS(q1,ans);
-
-    if (!donerr and !donefcfs and !ioq.empty()){
-      int count = 1;
-      i++;
-      while (q1.processes.empty() and stepIO(ioq,ans)){
-        count++;
-        i++;
-      }
-      ans.push_back( { count, -1 } );
-    }
-    if (q1.empty() and q2.empty() and ioq.empty() ) break;
-  }
+    bool donefcfs = (donerr)?false:stepFCFS(q2,ans);
 
 #if DEBUG
   cout << "Processes in q1" << endl << "========================" << endl;
@@ -125,6 +111,16 @@ int main (){
   for (auto p : ioq.processes ) p->debug();
   cout << "========================" << endl;
 #endif
+    if (!donerr and !donefcfs and !ioq.empty()){
+      int count = 1;
+      while (q1.processes.empty() and stepIO(ioq,ans)){
+        count++;
+      }
+      ans.push_back( { count, -1 } );
+    }
+    if (q1.empty() and q2.empty() and ioq.empty() ) break;
+  }
+
 
   //for ( auto i : ans ) i.print();
   for ( auto i : ans ) cout << endl << i.delta  << " " << i.id << endl;
@@ -173,7 +169,7 @@ bool stepFCFS ( PQueue& q , vector<Interval>& v){
   p->cpuc++;
   if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
     // concat interval to v
-    v.push_back( { p->cpuc, p->id } );
+    v.push_back( { p->cpuc-p->tick, p->id } );
     // if ioc>0, insert into io queue , reset cpuc
     q.iopush( p );
   }
