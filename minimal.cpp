@@ -1,10 +1,11 @@
 #include <iostream>
 #include <vector>
-#include <queue>
 
 #define QUANTUM  10
 #define IO_TIME  20
 #define TIME_THR 30
+
+#define DEBUG 0
 
 using namespace std;
 
@@ -12,11 +13,21 @@ struct Interval{
   Interval( int d, int id ) : delta(d), id(id) {}
   int delta;
   int id;
+  void print() {
+    const int burst = delta;
+    cout << "|" ;
+    for (int i = 0 ; i < burst/20 ; ++i) cout << "-" ;
+    if (id!=-1) cout << "P" << id ;
+    else        cout << "IO" ;
+    for (int i = 0 ; i < (burst+10)/20 ; ++i) cout << "-" ;
+    cout << "|" ;
+  }
 };
 
+// Too many variables, maybe we can make this simpler...
 struct Process {
-  Process(int c, int i) : cpub(c), cpuc(0), iob(0), ioc(i), wait(0) { id = count++; }
-  Process(int c, int i, int id) : cpub(0), cpuc(c), iob(0), ioc(i), wait(0), id(id) {}
+  Process( int c, int i ) : cpub(c), tick(0), cpuc(0), iob(0), ioc(i), wait(0) { id = count++; }
+  Process( int c, int i, int id ) : cpub(0), cpuc(c), iob(0), ioc(i), wait(0), id(id) {}
   // TODO: these names are not that intuitive...
   int cpub; // CPU burst;
   int tick; // CPU burst now (to save);
@@ -26,20 +37,10 @@ struct Process {
   int wait; // FCFS waiting count;
   int id;
   static int count;
-  void debug() {
+  void debug() const {
     cout << "{" <<  cpub << ", " << cpuc << ", " << iob << ", " << ioc << ", " << wait << ", " << id << "}" << endl;
   }
 };
-
-void printInterval( Interval i ){
-  const int burst = i.delta;
-  const int id = i.id;
-  cout << "|" ;
-  for (int i = 0 ; i < burst/20 ; ++i) cout << "-" ;
-  cout << "P" << id ;
-  for (int i = 0 ; i < (burst+10)/20 ; ++i) cout << "-" ;
-  cout << "|" ;
-}
 
 int Process::count = 0;
 
@@ -47,7 +48,7 @@ int Process::count = 0;
 //      since we will always need to iterate through the list whenever it is in the
 //      second queue, due to the 30ms rule
 struct PQueue{
-  PQueue() : next(nullptr) {}
+  PQueue() : next( nullptr ) {}
   vector<Process*> processes;
   PQueue* next;
   PQueue* ioq;
@@ -61,13 +62,20 @@ struct PQueue{
     return res; // poping does not deallocate the process;
     // it keeps existing but can be placed in other queue
   }
+  void iopush( Process* p ){
+    if ( pop()!= nullptr and p->ioc > 0 ) {
+      ioq->push(p);
+      p->ioc--;
+      p->cpuc=0;
+      p->tick=0;
+    }
+  }
+  bool empty() const { return processes.empty(); }
 };
 
-bool stepRR   ( PQueue& q , vector<Interval>& v);
-bool stepFCFS ( PQueue& q , vector<Interval>& v);
-bool stepIO   ( PQueue& q , vector<Interval>& v);
-
-void printInterval( Interval i );
+bool stepRR   ( PQueue& q , vector<Interval>& v );
+bool stepFCFS ( PQueue& q , vector<Interval>& v );
+bool stepIO   ( PQueue& q , vector<Interval>& v );
 
 int main (){
   PQueue q1;
@@ -81,13 +89,30 @@ int main (){
   ioq.next = &q1;
 
   Process procs[] = {
-    { 20, 0 }
+    { 10, 1 },
+    { 5, 0 }
   };
   for ( auto& p : procs ) q1.push(&p);
 
-  for (int i = 0 ; i < 19 ; ++i ) stepRR(q1,ans);
+  int i = 0;
+  while (1) {
+    stepIO(ioq,ans);
+    bool donerr = stepRR(q1,ans);  // can add to ioq
+    bool donefcfs = (donerr)?false:stepFCFS(q1,ans);
 
-#if 1
+    if (!donerr and !donefcfs and !ioq.empty()){
+      int count = 1;
+      i++;
+      while (q1.processes.empty() and stepIO(ioq,ans)){
+        count++;
+        i++;
+      }
+      ans.push_back( { count, -1 } );
+    }
+    if (q1.empty() and q2.empty() and ioq.empty() ) break;
+  }
+
+#if DEBUG
   cout << "Processes in q1" << endl << "========================" << endl;
   for (auto p : q1.processes ) p->debug();
   cout << "========================" << endl;
@@ -101,74 +126,68 @@ int main (){
   cout << "========================" << endl;
 #endif
 
-#if 0
-  while (1){
-    // if not empty, run q1:
-    // else run q2,
-    // run ioq regardless
-    // if q1 and q2 empty : io generates ocious time
-    // until q1 is not empty
-  }
-#endif
-  for ( auto i : ans ) {
-    printInterval(i);
-  }
+  //for ( auto i : ans ) i.print();
+  for ( auto i : ans ) cout << endl << i.delta  << " " << i.id << endl;
 }
 
 // increases cpuc burst counter until it reaches the cpu burst
-// wait a second, just found a bug...
 // maybe decreasing cpuc is better ?? ... it changes the whole thing up though :X
 bool stepRR ( PQueue& q , vector<Interval>& v){
   if ( q.processes.empty() ) return false;
   auto p = q.processes[0];
   p->cpuc++;
-  if ( p->cpuc == p->cpub ) {
-    if (p->ioc>=0 && q.pop()!= nullptr) {
-      q.ioq->push(p);
-      p->ioc--;
-    }
-    // if ioc>0, insert into io queue , reset cpuc
-    // p->ioc--;
+  if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
     // concat interval to v
     v.push_back( { p->cpuc-p->tick, p->id } );
+    // try to push into IO queue
+    q.iopush( p );
+    return true; // eww
   }
-  if ( p->cpuc ==  QUANTUM && p->cpub!=QUANTUM ) { // TODO: this is ugly
-    // pushes the process to the next queue
-    p->tick+=QUANTUM;
-    if (q.pop()!= nullptr) q.next->push(p);
-    // insert into q2, don't reset cpuc
+  if ( p->cpuc-p->tick == QUANTUM  ) {
     // concat interval to v
-    v.push_back( { QUANTUM, p->id } );
+    v.push_back( { QUANTUM , p->id } );
+    // update tick counter ( we have to save how many quantums has done )
+    p->tick+=QUANTUM;
+    // pushes the process to the next queue
+    if ( q.pop()!= nullptr ) q.next->push(p); //should never be false by logic
   }
   return true;
 }
 
 bool stepFCFS ( PQueue& q , vector<Interval>& v){
-  if (q.processes.empty()) return false;
+  if ( q.processes.empty() ) return false;
 
   // update wait
-  for (size_t i = 1 ; i < q.processes.size() ; ++i){ // skip first process
-    q.processes[i]->wait++;
+  const size_t size = q.processes.size();
+  for (size_t i = 1 ; i < size ; ++i){ // skip first process
+    auto p = q.processes[i];
+    p->wait++;
+    // check for waiting time has passed
+    if ( p->wait >= TIME_THR ) {
+      p->wait = 0 ;
+      if ( q.pop()!= nullptr ) q.next->push(p);
+    }
   }
 
   auto p = q.processes[0];
   p->cpuc++;
-  if ( p->cpuc == p->cpub ) {
-    // insert into io queue, reset cpuc
-    // p->ioc--;
+  if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
     // concat interval to v
+    v.push_back( { p->cpuc, p->id } );
+    // if ioc>0, insert into io queue , reset cpuc
+    q.iopush( p );
   }
 
   return true;
 }
 
 bool stepIO   ( PQueue& q , vector<Interval>& v ){
-  if (q.processes.empty()) return false;
+  if ( q.processes.empty() ) return false;
   auto p = q.processes[0];
   p->iob++;
   if ( p->iob == IO_TIME ) {
-    // insert into q1,
-    // reset iob
+    if ( q.pop()!= nullptr ) q.next->push( p );
+    p->iob = 0;
   }
 
   return true;
