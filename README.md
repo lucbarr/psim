@@ -39,12 +39,19 @@ TODO
 ====
 
   - [x] Implement Round-Robin logic
-  - [ ] Implement FCFS logic
-  - [ ] Integrate both into Monitor
+  - [x] Implement FCFS logic
   - [x] Discover how IO is gonna work
-  - [ ] Implement IO preemption stuff 
-  - [ ] Implement IO sync with CPU 
+  - [x] Implement IO preemption stuff 
+  - [x] Implement IO sync with CPU 
   - [ ] Improve Gantt printing
+  - [ ] Test a lot
   - [ ] Make it pretty (refactor)
+
+REFACTOR & BUGFIX
+=================
+
+  - [ ] Encapsulate messy stuff ( variable updates under step functions )
+  - [ ] Problem when process in FCFS queue gets preempted by waiting process going to RR queue
+
 
 
