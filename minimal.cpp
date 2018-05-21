@@ -4,8 +4,9 @@
 #define QUANTUM  10
 #define IO_TIME  20
 #define TIME_THR 30
+#define RESOLUTION 1
 
-#define DEBUG 1
+#define DEBUG 0
 
 using namespace std;
 
@@ -16,10 +17,10 @@ struct Interval{
   void print() {
     const int burst = delta;
     cout << "|" ;
-    for (int i = 0 ; i < burst/20 ; ++i) cout << "-" ;
+    for (int i = 0 ; i < burst/(2*RESOLUTION) ; ++i) cout << "-" ;
     if (id!=-1) cout << "P" << id ;
     else        cout << "IO" ;
-    for (int i = 0 ; i < (burst+10)/20 ; ++i) cout << "-" ;
+    for (int i = 0 ; i < (burst+RESOLUTION)/(2*RESOLUTION) ; ++i) cout << "-" ;
     cout << "|" ;
   }
 };
@@ -89,9 +90,14 @@ int main (){
   ioq.next = &q1;
 
   Process procs[] = {
-    { 30, 1 }
+    { 10, 1 },
+    { 5, 0 },
   };
   for ( auto& p : procs ) q1.push(&p);
+  cout << "========================" << endl;
+  cout << "Processes:" << endl;
+  for ( auto  p : procs ) cout << "{ burst: " <<  p.cpub << "\t n of io: " << p.ioc << "}" << endl;
+  cout << "========================" << endl;
 
   while (1) {
     stepIO(ioq,ans);
@@ -100,15 +106,15 @@ int main (){
 
 #if DEBUG
   cout << "Processes in q1" << endl << "========================" << endl;
-  for (auto p : q1.processes ) p->debug();
+  for ( auto p : q1.processes ) p->debug();
   cout << "========================" << endl;
 
   cout << "Processes in q2" << endl << "========================" << endl;
-  for (auto p : q2.processes ) p->debug();
+  for ( auto p : q2.processes ) p->debug();
   cout << "========================" << endl;
 
   cout << "Processes in ioq" << endl << "========================" << endl;
-  for (auto p : ioq.processes ) p->debug();
+  for ( auto p : ioq.processes ) p->debug();
   cout << "========================" << endl;
 #endif
     if (!donerr and !donefcfs and !ioq.empty()){
@@ -118,17 +124,21 @@ int main (){
       }
       ans.push_back( { count, -1 } );
     }
-    if (q1.empty() and q2.empty() and ioq.empty() ) break;
+    if ( q1.empty() and q2.empty() and ioq.empty() ) break;
   }
 
 
-  //for ( auto i : ans ) i.print();
-  for ( auto i : ans ) cout << endl << i.delta  << " " << i.id << endl;
+  cout << "Gantt (each - represents a " << RESOLUTION << "ms in time):" << endl << endl;
+  for ( auto i : ans ) i.print();
+  cout << endl << endl << "========================" << endl;
+  cout << "Intervals (pid -1 holds for io waiting cpu):" << endl;
+  for ( auto i : ans ) cout << "{ dt:" << i.delta  << ", pid:" << i.id << "}" << endl;
+  cout << "========================" << endl;
 }
 
 // increases cpuc burst counter until it reaches the cpu burst
 // maybe decreasing cpuc is better ?? ... it changes the whole thing up though :X
-bool stepRR ( PQueue& q , vector<Interval>& v){
+bool stepRR ( PQueue& q , vector<Interval>& v ){
   if ( q.processes.empty() ) return false;
   auto p = q.processes[0];
   p->cpuc++;
@@ -139,7 +149,7 @@ bool stepRR ( PQueue& q , vector<Interval>& v){
     q.iopush( p );
     return true; // eww
   }
-  if ( p->cpuc-p->tick == QUANTUM  ) {
+  if ( p->cpuc-p->tick == QUANTUM ) {
     // concat interval to v
     v.push_back( { QUANTUM , p->id } );
     // update tick counter ( we have to save how many quantums has done )
@@ -155,7 +165,7 @@ bool stepFCFS ( PQueue& q , vector<Interval>& v){
 
   // update wait
   const size_t size = q.processes.size();
-  for (size_t i = 1 ; i < size ; ++i){ // skip first process
+  for (size_t i = 0 ; i < size ; ++i){ // skip first process??
     auto p = q.processes[i];
     p->wait++;
     // check for waiting time has passed
