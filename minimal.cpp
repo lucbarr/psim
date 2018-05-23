@@ -6,7 +6,7 @@
 #define TIME_THR 30
 #define RESOLUTION 1
 
-#define DEBUG 0
+#define DEBUG 1
 
 using namespace std;
 
@@ -74,9 +74,10 @@ struct PQueue{
   bool empty() const { return processes.empty(); }
 };
 
-bool stepRR   ( PQueue& q , vector<Interval>& v );
-bool stepFCFS ( PQueue& q , vector<Interval>& v );
-bool stepIO   ( PQueue& q , vector<Interval>& v );
+bool stepRR     ( PQueue& q , vector<Interval>& v );
+bool stepFCFS   ( PQueue& q , vector<Interval>& v );
+bool stepIO     ( PQueue& q , vector<Interval>& v );
+void updateWait ( PQueue& q );
 
 int main (){
   PQueue q1;
@@ -90,8 +91,10 @@ int main (){
   ioq.next = &q1;
 
   Process procs[] = {
-    { 10, 1 },
-    { 5, 0 },
+    { 8, 3 },
+    { 40, 1 },
+    { 10, 2 },
+    { 30, 1 }
   };
   for ( auto& p : procs ) q1.push(&p);
   cout << "========================" << endl;
@@ -100,12 +103,9 @@ int main (){
   cout << "========================" << endl;
 
   while (1) {
-    stepIO(ioq,ans);
-    bool donerr = stepRR(q1,ans);  // can add to ioq
-    bool donefcfs = (donerr)?false:stepFCFS(q2,ans);
 
 #if DEBUG
-  cout << "Processes in q1" << endl << "========================" << endl;
+  cout << endl << "Processes in q1" << endl << "========================" << endl;
   for ( auto p : q1.processes ) p->debug();
   cout << "========================" << endl;
 
@@ -117,6 +117,12 @@ int main (){
   for ( auto p : ioq.processes ) p->debug();
   cout << "========================" << endl;
 #endif
+
+    bool donerr = stepRR(q1,ans);  // can add to ioq
+    bool donefcfs = (donerr)?false:stepFCFS(q2,ans);
+    updateWait(q2);
+
+    stepIO(ioq,ans);
     if (!donerr and !donefcfs and !ioq.empty()){
       int count = 1;
       while (q1.processes.empty() and stepIO(ioq,ans)){
@@ -160,8 +166,7 @@ bool stepRR ( PQueue& q , vector<Interval>& v ){
   return true;
 }
 
-bool stepFCFS ( PQueue& q , vector<Interval>& v){
-  if ( q.processes.empty() ) return false;
+void updateWait ( PQueue& q ){
 
   // update wait
   const size_t size = q.processes.size();
@@ -174,6 +179,11 @@ bool stepFCFS ( PQueue& q , vector<Interval>& v){
       if ( q.pop()!= nullptr ) q.next->push(p);
     }
   }
+}
+
+bool stepFCFS ( PQueue& q , vector<Interval>& v){
+  if ( q.processes.empty() ) return false;
+
 
   auto p = q.processes[0];
   p->cpuc++;
