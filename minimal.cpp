@@ -27,8 +27,9 @@ struct Interval{
 
 // Too many variables, maybe we can make this simpler...
 struct Process {
-  Process( int c, int i ) : cpub(c), tick(0), cpuc(0), iob(0), ioc(i), wait(0) { id = count++; }
-  Process( int c, int i, int id ) : cpub(0), cpuc(c), iob(0), ioc(i), wait(0), id(id) {}
+  Process( int c, int i ) : cpub(c), tick(0), cpuc(0), iob(0), ioc(i), wait(0),
+  rr(0),fcfs(0)
+  { id = count++; }
   // TODO: these names are not that intuitive...
   int cpub; // CPU burst;
   int tick; // CPU burst now (to save);
@@ -36,10 +37,12 @@ struct Process {
   int iob;  // current IO burst counter
   int ioc;  // IO count;
   int wait; // FCFS waiting count;
+  int rr;
+  int fcfs;
   int id;
   static int count;
   void debug() const {
-    cout << "{" <<  cpub << ", " << cpuc << ", " << iob << ", " << ioc << ", " << wait << ", " << id << "}" << endl;
+    cout << "{" <<  cpub << ", " << cpuc << ", " << iob << ", " << ioc << ", " << wait << ", " << id << ", " << rr << ", " << fcfs <<  "}" << endl;
   }
 };
 
@@ -76,8 +79,13 @@ struct PQueue{
 
 bool stepRR     ( PQueue& q , vector<Interval>& v );
 bool stepFCFS   ( PQueue& q , vector<Interval>& v );
-bool stepIO     ( PQueue& q , vector<Interval>& v );
-void updateWait ( PQueue& q );
+bool updateRR     ( PQueue& q , vector<Interval>& v );
+bool updateFCFS   ( PQueue& q , vector<Interval>& v );
+bool updateIO   ( PQueue& q );
+bool updateWait   ( PQueue& q );
+bool stepIO     ( PQueue& q );
+void stepWait ( PQueue& q, bool skip_first );
+bool step       ( PQueue& q , bool isrr = true);
 
 int main (){
   PQueue q1;
@@ -105,27 +113,37 @@ int main (){
   while (1) {
 
 #if DEBUG
-  cout << endl << "Processes in q1" << endl << "========================" << endl;
-  for ( auto p : q1.processes ) p->debug();
-  cout << "========================" << endl;
+    cout << endl << "Processes in q1" << endl << "========================" << endl;
+    for ( auto p : q1.processes ) p->debug();
+    cout << "========================" << endl;
 
-  cout << "Processes in q2" << endl << "========================" << endl;
-  for ( auto p : q2.processes ) p->debug();
-  cout << "========================" << endl;
+    cout << "Processes in q2" << endl << "========================" << endl;
+    for ( auto p : q2.processes ) p->debug();
+    cout << "========================" << endl;
 
-  cout << "Processes in ioq" << endl << "========================" << endl;
-  for ( auto p : ioq.processes ) p->debug();
-  cout << "========================" << endl;
+    cout << "Processes in ioq" << endl << "========================" << endl;
+    for ( auto p : ioq.processes ) p->debug();
+    cout << "========================" << endl;
 #endif
 
+#if 0
     bool donerr = stepRR(q1,ans);  // can add to ioq
     bool donefcfs = (donerr)?false:stepFCFS(q2,ans);
+    stepWait(q2);
+#endif
+    bool donerr = step(q1);
+    bool donefcfs = (donerr)?false:step(q2,false);
+    stepIO(ioq);
+    stepWait(q2,donefcfs);
+    if (donerr) updateRR(q1,ans);
+    else updateFCFS(q2,ans);
     updateWait(q2);
+    updateIO(ioq);
 
-    stepIO(ioq,ans);
     if (!donerr and !donefcfs and !ioq.empty()){
       int count = 1;
-      while (q1.processes.empty() and stepIO(ioq,ans)){
+      while (q1.processes.empty() and stepIO(ioq)){
+        updateIO(ioq);
         count++;
       }
       ans.push_back( { count, -1 } );
@@ -148,13 +166,6 @@ bool stepRR ( PQueue& q , vector<Interval>& v ){
   if ( q.processes.empty() ) return false;
   auto p = q.processes[0];
   p->cpuc++;
-  if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
-    // concat interval to v
-    v.push_back( { p->cpuc-p->tick, p->id } );
-    // try to push into IO queue
-    q.iopush( p );
-    return true; // eww
-  }
   if ( p->cpuc-p->tick == QUANTUM ) {
     // concat interval to v
     v.push_back( { QUANTUM , p->id } );
@@ -166,19 +177,88 @@ bool stepRR ( PQueue& q , vector<Interval>& v ){
   return true;
 }
 
-void updateWait ( PQueue& q ){
+bool step ( PQueue& q,  bool isrr ){
+  if ( q.processes.empty() ) return false;
+  auto p = q.processes[0];
+  p->cpuc++;
+  if (isrr) p->rr++;
+  else      p->fcfs++;
+  return true;
+}
+
+bool updateRR( PQueue& q , vector<Interval>& v ){
+
+  if ( q.processes.empty() ) return false;
+  auto p = q.processes[0];
+  v.push_back( { 1, p->id } );
+  p->wait = 0;
+  if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
+    // concat interval to v
+    // try to push into IO queue
+    q.iopush( p );
+    return true; // eww
+  }
+  if ( p->rr == QUANTUM ){
+    if ( q.pop()!= nullptr ) q.next->push(p); //should never be false by logic
+    p->rr = 0;
+  }
+  return true;
+
+}
+
+bool updateFCFS( PQueue& q , vector<Interval>& v ){
+  if ( q.processes.empty() ) return false;
+  auto p = q.processes[0];
+  v.push_back( { 1, p->id } );
+  p->wait = 0;
+  if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
+    // concat interval to v
+    // try to push into IO queue
+    q.iopush( p );
+    return true; // eww
+  }
+  return true;
+
+}
+
+bool updateIO ( PQueue& q ){
+  if ( q.processes.empty() ) return false;
+  auto p = q.processes[0];
+
+   if ( p->iob == IO_TIME ) {
+     if ( q.pop()!= nullptr ) q.next->push( p );
+     p->iob = 0;
+     p->rr = 0;
+     p->fcfs = 0;
+   }
+   return true;
+}
+
+void stepWait ( PQueue& q, bool skip_first ){
 
   // update wait
   const size_t size = q.processes.size();
-  for (size_t i = 0 ; i < size ; ++i){ // skip first process??
+  size_t i = 0;
+  if (skip_first) ++i;
+  for (; i < size ; ++i){ // skip first process??
     auto p = q.processes[i];
     p->wait++;
     // check for waiting time has passed
-    if ( p->wait >= TIME_THR ) {
-      p->wait = 0 ;
-      if ( q.pop()!= nullptr ) q.next->push(p);
+  }
+}
+
+bool updateWait ( PQueue& q ){
+  if ( q.processes.empty() ) return false;
+
+    //processes.erase( processes.begin() );
+  for ( int i = 0 ; i < q.processes.size() ; ++i ){
+    auto p = q.processes[i];
+    if ( p->wait == TIME_THR ){
+      q.processes.erase( q.processes.begin()+i );
+      q.next->push ( p );
     }
   }
+  return true;
 }
 
 bool stepFCFS ( PQueue& q , vector<Interval>& v){
@@ -197,14 +277,16 @@ bool stepFCFS ( PQueue& q , vector<Interval>& v){
   return true;
 }
 
-bool stepIO   ( PQueue& q , vector<Interval>& v ){
+bool stepIO   ( PQueue& q ){
   if ( q.processes.empty() ) return false;
   auto p = q.processes[0];
   p->iob++;
-  if ( p->iob == IO_TIME ) {
-    if ( q.pop()!= nullptr ) q.next->push( p );
-    p->iob = 0;
-  }
+  /*
+     if ( p->iob == IO_TIME ) {
+     if ( q.pop()!= nullptr ) q.next->push( p );
+     p->iob = 0;
+     }
+     */
 
   return true;
 }
