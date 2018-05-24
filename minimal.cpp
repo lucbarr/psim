@@ -6,7 +6,7 @@
 #define TIME_THR 30
 #define RESOLUTION 1
 
-#define DEBUG 1
+#define DEBUG 0
 
 using namespace std;
 
@@ -27,12 +27,11 @@ struct Interval{
 
 // Too many variables, maybe we can make this simpler...
 struct Process {
-  Process( int c, int i ) : cpub(c), tick(0), cpuc(0), iob(0), ioc(i), wait(0),
+  Process( int c, int i ) : cpub(c),  cpuc(0), iob(0), ioc(i), wait(0),
   rr(0),fcfs(0)
   { id = count++; }
   // TODO: these names are not that intuitive...
   int cpub; // CPU burst;
-  int tick; // CPU burst now (to save);
   int cpuc; // Current CPU counter
   int iob;  // current IO burst counter
   int ioc;  // IO count;
@@ -71,7 +70,6 @@ struct PQueue{
       ioq->push(p);
       p->ioc--;
       p->cpuc=0;
-      p->tick=0;
     }
   }
   bool empty() const { return processes.empty(); }
@@ -150,31 +148,23 @@ int main (){
     }
     if ( q1.empty() and q2.empty() and ioq.empty() ) break;
   }
-
+  vector<Interval> merged;
+  // merge intervals
+  for (int i = 1 ; i < ans.size() ; ++i){
+    int aux = ans[i-1].delta;
+    while ( ans[i].id == ans[i-1].id ) {
+      aux++;
+      i++;
+    }
+    merged.push_back( { aux, ans[i-1].id } );
+  }
 
   cout << "Gantt (each - represents a " << RESOLUTION << "ms in time):" << endl << endl;
-  for ( auto i : ans ) i.print();
+  for ( auto i : merged ) i.print();
   cout << endl << endl << "========================" << endl;
   cout << "Intervals (pid -1 holds for io waiting cpu):" << endl;
-  for ( auto i : ans ) cout << "{ dt:" << i.delta  << ", pid:" << i.id << "}" << endl;
+  for ( auto i : merged ) cout << "{ dt:" << i.delta  << ", pid:" << i.id << " }" << endl;
   cout << "========================" << endl;
-}
-
-// increases cpuc burst counter until it reaches the cpu burst
-// maybe decreasing cpuc is better ?? ... it changes the whole thing up though :X
-bool stepRR ( PQueue& q , vector<Interval>& v ){
-  if ( q.processes.empty() ) return false;
-  auto p = q.processes[0];
-  p->cpuc++;
-  if ( p->cpuc-p->tick == QUANTUM ) {
-    // concat interval to v
-    v.push_back( { QUANTUM , p->id } );
-    // update tick counter ( we have to save how many quantums has done )
-    p->tick+=QUANTUM;
-    // pushes the process to the next queue
-    if ( q.pop()!= nullptr ) q.next->push(p); //should never be false by logic
-  }
-  return true;
 }
 
 bool step ( PQueue& q,  bool isrr ){
@@ -193,10 +183,8 @@ bool updateRR( PQueue& q , vector<Interval>& v ){
   v.push_back( { 1, p->id } );
   p->wait = 0;
   if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
-    // concat interval to v
-    // try to push into IO queue
     q.iopush( p );
-    return true; // eww
+    return true;
   }
   if ( p->rr == QUANTUM ){
     if ( q.pop()!= nullptr ) q.next->push(p); //should never be false by logic
@@ -258,22 +246,6 @@ bool updateWait ( PQueue& q ){
       q.next->push ( p );
     }
   }
-  return true;
-}
-
-bool stepFCFS ( PQueue& q , vector<Interval>& v){
-  if ( q.processes.empty() ) return false;
-
-
-  auto p = q.processes[0];
-  p->cpuc++;
-  if ( p->cpuc == p->cpub ) { // TODO: duplicated code1
-    // concat interval to v
-    v.push_back( { p->cpuc-p->tick, p->id } );
-    // if ioc>0, insert into io queue , reset cpuc
-    q.iopush( p );
-  }
-
   return true;
 }
 
