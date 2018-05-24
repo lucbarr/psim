@@ -1,8 +1,7 @@
 MAIN = psim.out
 CXX = g++
 CXXFLAGS = -std=c++11
-#SRC := $(shell find . -name '*.cpp')
-SRC := minimal.cpp
+SRC := $(shell find . -name '*.cpp')
 
 all: $(SRC)
 				@echo Building...
